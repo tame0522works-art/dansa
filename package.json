@@ -1,0 +1,32 @@
+{
+  "name": "dansa",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "東京駅・丸の内で、階段や段差を避ける徒歩ルートを利用者ごとに探す",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "fetch": "tsx tools/fetch.ts",
+    "convert": "tsx tools/convert.ts",
+    "check": "npm run check:data && npm run check:route",
+    "check:data": "tsx tools/check-data.ts",
+    "check:route": "tsx tools/check-route.ts"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.88.0",
+    "tsx": "^4.23.15",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.4"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules
+dist
+*.local
+*.log
+.DS_Store
+.vscode/*
+.idea
+# 国交省の元データ。npm run fetch で取り直せる
+raw
+dist-e2e
+e2e-failures
+dist-pages
