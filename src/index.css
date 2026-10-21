@@ -1,0 +1,244 @@
+:root {
+  --bg: #f6f5f1;
+  --fg: #1f2328;
+  --muted: #5b616b;
+  --line: #d6d4cc;
+  --accent: #2b3f8f;
+  --route: #0b7a6c;
+  --shortest: #5f6675;
+  --avoided: #c2410c;
+  color-scheme: light dark;
+  font-family: system-ui, 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191d;
+    --fg: #e8e6e1;
+    --muted: #a3a7ae;
+    --line: #34373d;
+    --accent: #9fb2ff;
+    --route: #3fbfa9;
+    --avoided: #ff8a50;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bar h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.map:active {
+  cursor: grabbing;
+}
+
+.map:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* キーボードで地図を選んだときだけ出す操作の案内（読み上げには aria-describedby でいつも伝わる） */
+.map-keys {
+  display: none;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.82rem;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+.map:focus-visible + .map-keys {
+  display: block;
+}
+
+.controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.profiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.profiles legend {
+  float: left;
+  margin-right: 6px;
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.profiles label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.profiles label:has(input:checked) {
+  border-color: var(--route);
+  background: color-mix(in srgb, var(--route) 14%, transparent);
+  font-weight: 600;
+}
+
+.profiles input {
+  accent-color: var(--route);
+  margin: 0;
+}
+
+.profiles label:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.result {
+  /* 結果の長さで地図の高さが変わらないよう、ふだんの表示（要約＋注意2行）の分をとっておく */
+  min-height: 5.6em;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  margin: 0;
+}
+
+.summary strong {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.swatch.route {
+  background: var(--route);
+}
+
+.swatch.shortest {
+  margin-left: 10px;
+  background: var(--shortest);
+}
+
+.notes {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.credit {
+  padding: 6px 16px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.credit p {
+  margin: 0;
+}
+
+.credit a {
+  color: inherit;
+}
