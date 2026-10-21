@@ -11,9 +11,12 @@
     "preview": "vite preview",
     "fetch": "tsx tools/fetch.ts",
     "convert": "tsx tools/convert.ts",
-    "check": "npm run check:data && npm run check:route",
+    "check": "npm run check:data && npm run check:route && npm run check:contrast",
     "check:data": "tsx tools/check-data.ts",
-    "check:route": "tsx tools/check-route.ts"
+    "check:route": "tsx tools/check-route.ts",
+    "e2e": "vite build --outDir dist-e2e --emptyOutDir && tsx tools/e2e.ts",
+    "screenshots": "tsx tools/screenshots.ts",
+    "check:contrast": "tsx tools/check-contrast.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

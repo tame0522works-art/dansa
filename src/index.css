@@ -7,6 +7,7 @@
   --route: #0b7a6c;
   --shortest: #5f6675;
   --avoided: #c2410c;
+  --blocked: #b42318;
   color-scheme: light dark;
   font-family: system-ui, 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
 }
@@ -20,6 +21,7 @@
     --accent: #9fb2ff;
     --route: #3fbfa9;
     --avoided: #ff8a50;
+    --blocked: #ef5350;
   }
 }
 
@@ -193,8 +195,15 @@ body {
   background: var(--route);
 }
 
-.swatch.shortest {
+.pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: 10px;
+  white-space: nowrap;
+}
+
+.swatch.shortest {
   background: var(--shortest);
 }
 
@@ -241,4 +250,37 @@ body {
 
 .credit a {
   color: inherit;
+}
+
+/* 地図の赤い印（通れない箇所）と同じ見た目の小さな丸。文中で印を指す */
+.badge-blocked {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--blocked);
+  vertical-align: -0.05em;
+}
+
+/* スマホの幅では、利用者の選択肢を1行に収めて地図を広く残す。見出しは読み上げにだけ残す */
+@media (max-width: 480px) {
+  .profiles legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .profiles label {
+    padding: 4px 10px;
+    font-size: 0.9rem;
+  }
+
+  .controls {
+    gap: 8px;
+    padding: 10px 16px;
+  }
 }

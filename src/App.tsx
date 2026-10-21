@@ -86,13 +86,15 @@ export default function App() {
       avoided: badges(result.avoided),
       passed: badges(result.passed),
       unknown: result.unknown.map((l) => badgeAt(l, '?')),
+      bypass: result.blocked ? linksToPath(result.blocked.route.links.map((l) => l.link)) : null,
+      blocked: badges(result.blocked?.blockers ?? []),
     }
   }, [result])
 
   /** 最短の道と利用者向けの道がどちらも入る範囲（m） */
   const focus = useMemo<[number, number, number, number] | null>(() => {
     if (!result) return null
-    const nodes = [...result.shortest.nodes, ...(result.route?.nodes ?? [])]
+    const nodes = [...result.shortest.nodes, ...(result.route?.nodes ?? result.blocked?.route.nodes ?? [])]
     const xs = nodes.map((i) => net.nodes[2 * i] / 100)
     const ys = nodes.map((i) => net.nodes[2 * i + 1] / 100)
     return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
@@ -152,8 +154,11 @@ export default function App() {
                 <span className="swatch route" aria-hidden="true" />
                 {label}向け <strong>{meters(result.route.length)}</strong>
                 {result.route.length - result.shortest.length >= 1 ? `（最短より +${meters(result.route.length - result.shortest.length)}）` : '（最短と同じ長さ）'}
-                <span className="swatch shortest" aria-hidden="true" />
-                最短 {meters(result.shortest.length)}
+                {/* 色の見本と「最短 …m」が別の行に分かれないよう、ひとまとまりにする */}
+                <span className="pair">
+                  <span className="swatch shortest" aria-hidden="true" />
+                  最短 {meters(result.shortest.length)}
+                </span>
               </p>
               <ul className="notes">
                 {result.avoided.length > 0 ? <li>最短の道にある {tally(result.avoided)} を避けました。</li> : <li>最短の道に、{label}で避けたい箇所はありません。</li>}
@@ -162,7 +167,20 @@ export default function App() {
               </ul>
             </>
           ) : result ? (
-            <p className="summary">{label}で通れる道が見つかりません（最短は {meters(result.shortest.length)}）。</p>
+            <>
+              <p className="summary">
+                {label}で通れる道が見つかりません（最短は {meters(result.shortest.length)}）。
+              </p>
+              <ul className="notes">
+                {result.blocked && (
+                  <li>
+                    <span className="badge-blocked" aria-hidden="true" />
+                    赤い印の {tally(result.blocked.blockers)} を越えられれば、破線の道（{meters(result.blocked.route.length)}）で行けます。
+                  </li>
+                )}
+                {result.blocked?.nearEnd && <li>越えられない箇所が出発地か目的地のすぐそばにあります（建物の入口の段差など）。近くの別の道に置き直すと見つかることがあります。</li>}
+              </ul>
+            </>
           ) : null}
         </div>
         {/* 出発地を選ぶ前から置いておく（現れたときに地図が縮んで、押す位置がずれないように） */}

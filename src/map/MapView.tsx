@@ -3,6 +3,7 @@
 // 操作（ドラッグ・ホイール・2本指・キーボード）は hikage の地図と同じ。
 import { useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { projector, unprojector, type Origin } from '../geo.ts'
+import { COLORS, MAP_BG } from './colors.ts'
 import { TILE_SIZE, tileLatLon, tileUrl, tileXY, tileZoomFor } from './tiles.ts'
 import { clampView, panBy, toLocal, toScreen, zoomAt, type Limits, type Size, type View } from './view.ts'
 
@@ -25,6 +26,10 @@ export interface Overlay {
   passed: Badge[]
   /** 利用者向けの道のうち不明な経路。どれも数 m と短く点線の切れ目が見えないので、印も置く */
   unknown: Badge[]
+  /** 到達できないとき、通れない箇所をいちばん少なく通る道（破線） */
+  bypass: Path2D | null
+  /** その道の上の通れない箇所 */
+  blocked: Badge[]
 }
 
 interface Props {
@@ -51,18 +56,11 @@ const KEY_STEP = 40
  */
 const TILE_FILTER = 'grayscale(1) brightness(1.12) contrast(0.55)'
 
-export const COLORS = {
-  network: 'rgba(43, 92, 171, 0.5)',
-  shortest: '#5f6675',
-  route: '#0b7a6c',
-  casing: '#ffffff',
-  avoided: '#c2410c',
-  start: '#1f2328',
-  goal: '#c2410c',
-}
-
-/** 見せたい範囲を合わせるとき、画面の縁からとる余白（CSS px）。印の丸（半径 13px）が縁に掛からないように */
+/** 出発地・目的地のピンの丸を、地点からどれだけ上に浮かせるか（CSS px） */
+const PIN_HEIGHT = 26
+/** 見せたい範囲を合わせるとき、画面の縁からとる余白（CSS px）。上はピンの丸（地点の 26px 上、半径 13px）が掛からないよう広くとる */
 const FIT_PADDING = 32
+const FIT_PADDING_TOP = PIN_HEIGHT + 20
 
 export default function MapView({ origin, limits, initial, network, overlay, start, goal, focus, onPick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -88,7 +86,7 @@ export default function MapView({ origin, limits, initial, network, overlay, sta
     const dpr = window.devicePixelRatio || 1
     const v = viewRef.current
     ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.fillStyle = '#e8e8e4'
+    ctx.fillStyle = MAP_BG
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     // 1. 地理院タイル。画面の四隅を含むタイルを並べ、各タイルの角を平面座標に直して置く
@@ -142,6 +140,13 @@ export default function MapView({ origin, limits, initial, network, overlay, sta
         ctx.lineWidth = px(5)
         ctx.stroke(path)
       }
+      if (overlay.bypass) {
+        // 通れない箇所さえ越えれば行ける道。利用者向けの道ではないので、色をつけず細い破線にする
+        ctx.setLineDash([px(8), px(6)])
+        ctx.strokeStyle = COLORS.blocked
+        ctx.lineWidth = px(3)
+        ctx.stroke(overlay.bypass)
+      }
       ctx.setLineDash([])
     }
 
@@ -165,24 +170,30 @@ export default function MapView({ origin, limits, initial, network, overlay, sta
     for (const b of overlay?.avoided ?? []) badge(b, '#ffffff', COLORS.avoided, COLORS.avoided)
     for (const b of overlay?.passed ?? []) badge(b, COLORS.route, '#ffffff', '#ffffff')
     for (const b of overlay?.unknown ?? []) badge(b, '#ffffff', COLORS.shortest, COLORS.shortest)
+    for (const b of overlay?.blocked ?? []) badge(b, COLORS.blocked, '#ffffff', '#ffffff')
+    // 出発地・目的地はピンにして、丸を地点の上に浮かせる。地点そのものに重なる印（入口の段差や「?」）を隠さないように
     for (const [p, label, color] of [
       [start, '出', COLORS.start],
       [goal, '着', COLORS.goal],
     ] as const) {
       if (!p) continue
       const [sx, sy] = toScreen(v, sizeRef.current, p[0], p[1])
+      const hy = sy - PIN_HEIGHT
       ctx.beginPath()
-      ctx.arc(sx, sy, 13, 0, Math.PI * 2)
+      ctx.moveTo(sx, sy)
+      ctx.lineTo(sx - 6, hy + 8)
+      ctx.arc(sx, hy, 13, Math.PI * 0.75, Math.PI * 0.25)
+      ctx.closePath()
       ctx.fillStyle = color
       ctx.fill()
-      ctx.lineWidth = 3
+      ctx.lineWidth = 2.5
       ctx.strokeStyle = '#ffffff'
       ctx.stroke()
       ctx.fillStyle = '#ffffff'
       ctx.font = '700 13px system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(label, sx, sy + 0.5)
+      ctx.fillText(label, sx, hy + 0.5)
     }
 
     if (focusedRef.current) {
@@ -255,11 +266,14 @@ export default function MapView({ origin, limits, initial, network, overlay, sta
     const v = viewRef.current
     const s = sizeRef.current
     const [ax, ay] = toLocal(v, s, FIT_PADDING, s.height - FIT_PADDING)
-    const [bx, by] = toLocal(v, s, s.width - FIT_PADDING, FIT_PADDING)
+    const [bx, by] = toLocal(v, s, s.width - FIT_PADDING, FIT_PADDING_TOP)
     if (focus[0] >= ax && focus[1] >= ay && focus[2] <= bx && focus[3] <= by) return
     // 寄せることはしない（いま見ている縮尺より細かくはしない）。入りきらないときだけ引く
-    const need = Math.max((focus[2] - focus[0]) / Math.max(1, s.width - 2 * FIT_PADDING), (focus[3] - focus[1]) / Math.max(1, s.height - 2 * FIT_PADDING))
-    viewRef.current = clampView({ cx: (focus[0] + focus[2]) / 2, cy: (focus[1] + focus[3]) / 2, mpp: Math.max(v.mpp, need) }, limitsRef.current)
+    const need = Math.max((focus[2] - focus[0]) / Math.max(1, s.width - 2 * FIT_PADDING), (focus[3] - focus[1]) / Math.max(1, s.height - FIT_PADDING - FIT_PADDING_TOP))
+    const mpp = Math.max(v.mpp, need)
+    // 上の余白が広いぶん、中心を少し上へずらす
+    const cy = (focus[1] + focus[3]) / 2 + ((FIT_PADDING_TOP - FIT_PADDING) / 2) * mpp
+    viewRef.current = clampView({ cx: (focus[0] + focus[2]) / 2, cy, mpp }, limitsRef.current)
     requestDraw()
   }, [focus])
 

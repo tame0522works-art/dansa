@@ -193,17 +193,18 @@ export function findRoute(g: Graph, profile: Profile, from: number, to: number, 
 
   const nodes = [to]
   const links: Route['links'] = []
-  let length = 0
+  // 長さは dm の整数で足してから m に直す（0.1 を小数で足すと、足す順番で 835.5 が 835.4999… になり、表示の丸めが向きで変わる）
+  let dm = 0
   for (let v = to; v !== from; ) {
     const e = via[v]
     const i = g.link[e]
     const forward = g.forward[e] === 1
     links.push({ link: i, forward })
-    length += g.net.links.length[i] / 10
+    dm += g.net.links.length[i]
     v = forward ? g.net.links.from[i] : g.net.links.to[i]
     nodes.push(v)
   }
-  return { nodes: nodes.reverse(), links: links.reverse(), length, cost: dist[to] }
+  return { nodes: nodes.reverse(), links: links.reverse(), length: dm / 10, cost: dist[to] }
 }
 
 /**

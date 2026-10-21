@@ -156,6 +156,8 @@ for (let k = 0; k < 3; k++) {
         assert.ok(Math.abs(c - r.cost) < 1e-6 && Math.abs(len - r.length) < 1e-6)
         assert.equal(r.nodes[0], from)
         assert.equal(r.nodes.at(-1), to)
+        // 最短の道は向きを入れ替えても同じ長さ（長さを小数で足していたとき、足す順番で表示が 1m ずれたことがある）
+        if (p === 'shortest') assert.equal(findRoute(g, p, to, from)!.length, r.length)
       }
       compared++
     }

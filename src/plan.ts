@@ -1,5 +1,5 @@
 // 出発・到着の点を決め、最短の道と利用者向けの道を比べる。画面に出す数字と印はここで作る（描画はしない）。
-import { COSTS, BLOCK, findRoute, obstaclesOf, type Graph, type Obstacle, type Profile, type Route } from './route.ts'
+import { COSTS, BLOCK, findBlockers, findRoute, obstaclesOf, type Graph, type Obstacle, type Profile, type Route } from './route.ts'
 
 /** 押した地点からこれより遠い点には寄せない（m）。道のない所（皇居の中など）を押したときに案内する */
 export const SNAP_LIMIT = 60
@@ -69,6 +69,11 @@ export interface Plan {
   passed: Mark[]
   /** 利用者向けの道のうち、段差・勾配・幅のどれかが不明な経路 */
   unknown: number[]
+  /**
+   * 到達できないとき、通れない箇所をいちばん少なく通る道と、その上の通れない箇所。
+   * nearEnd は通れない箇所が出発地か目的地に接しているか（建物の入口の段差などで、置き直せば行けることが多い）
+   */
+  blocked: { route: Route; blockers: Mark[]; nearEnd: boolean } | null
 }
 
 export function plan(g: Graph, profile: Profile, from: number, to: number): Plan | null {
@@ -87,5 +92,18 @@ export function plan(g: Graph, profile: Profile, from: number, to: number): Plan
     avoided: marks(shortest).filter((m) => !used.has(m.link)),
     passed: route ? marks(route) : [],
     unknown: route ? route.links.filter(({ link, forward }) => obstaclesOf(g.net, link, forward).includes('unknown')).map((l) => l.link) : [],
+    blocked: route ? null : blockedBy(g, profile, from, to),
   }
+}
+
+function blockedBy(g: Graph, profile: Profile, from: number, to: number): Plan['blocked'] {
+  const found = findBlockers(g, profile, from, to)
+  if (!found) return null
+  const blockers = found.blockers.map(({ link, forward }) => ({
+    link,
+    obstacles: obstaclesOf(g.net, link, forward).filter((o) => o !== 'unknown' && COSTS[profile][o] === BLOCK),
+  }))
+  const ends = new Set([from, to])
+  const nearEnd = blockers.some(({ link }) => ends.has(g.net.links.from[link]) || ends.has(g.net.links.to[link]))
+  return { route: found.route, blockers, nearEnd }
 }
