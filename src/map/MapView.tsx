@@ -36,6 +36,8 @@ interface Props {
   origin: Origin
   limits: Limits
   initial: View
+  /** 地図の読み上げ名 */
+  label: string
   network: Path2D
   overlay: Overlay | null
   start: [number, number] | null
@@ -62,7 +64,7 @@ const PIN_HEIGHT = 26
 const FIT_PADDING = 32
 const FIT_PADDING_TOP = PIN_HEIGHT + 20
 
-export default function MapView({ origin, limits, initial, network, overlay, start, goal, focus, onPick }: Props) {
+export default function MapView({ origin, limits, initial, label, network, overlay, start, goal, focus, onPick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewRef = useRef<View>(initial)
   const sizeRef = useRef<Size>({ width: 0, height: 0 })
@@ -361,7 +363,7 @@ export default function MapView({ origin, limits, initial, network, overlay, sta
         ref={canvasRef}
         className="map"
         tabIndex={0}
-        aria-label="東京駅・丸の内の歩行経路の地図"
+        aria-label={label}
         aria-describedby="map-keys"
         onKeyDown={onKeyDown}
         onFocus={(e) => {

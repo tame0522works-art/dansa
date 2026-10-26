@@ -51,7 +51,7 @@ export function nearestNode(g: Graph, inMain: Uint8Array, x: number, y: number):
 export function matters(profile: Profile, o: Obstacle): boolean {
   if (o === 'unknown') return false
   const r = COSTS[profile][o]
-  return r === BLOCK || (o === 'stairs' || o === 'step' ? r > 0 : r > 1)
+  return r === BLOCK || (o === 'stairs' || o === 'escalator' || o === 'step' ? r > 0 : r > 1)
 }
 
 export interface Mark {

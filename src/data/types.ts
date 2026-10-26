@@ -1,4 +1,4 @@
-// 同梱する src/data/network.json の形。経路は列ごとの配列で持つ（4,947本 × 項目数のオブジェクトを作らずに済む）。
+// 同梱する src/data/<地域>.json の形。経路は列ごとの配列で持つ（4,947本 × 項目数のオブジェクトを作らずに済む）。
 // コードの意味は「歩行空間ネットワークデータ等整備仕様（2018年3月版）」表3.2 のとおり。99 は不明。
 
 export const UNKNOWN = 99
@@ -35,24 +35,29 @@ export const Slope = { Gentle: 1, SteepUp: 2, SteepDown: 3 } as const
 /** 段差（lev_diff） */
 export const Step = { Low: 1, High: 2 } as const
 
+/** 方向性（direction）。一方通行はおもにエスカレーター */
+export const Direction = { Both: 1, Forward: 2, Backward: 3 } as const
+
 export interface Network {
   attribution: string
   source: { page: string; spec: string; fetchedAt: string }
-  /** 平面の原点（hikage と同じ東京駅の代表点） */
+  /** 平面の原点（東京駅は hikage と同じ代表点、ほかは駅のあたり） */
   origin: { lat: number; lon: number }
   /** 点の位置。東向き・北向きの cm を [x0, y0, x1, y1, ...] で並べる */
   nodes: number[]
-  /** 点の階層数（0 = 地上、1 = デッキ・歩道橋、0.5 = その間の踊り場） */
+  /** 点の階層数（0 = 地上、1 = デッキ・歩道橋、-1 = 地下、0.5 刻みは踊り場） */
   floors: number[]
   links: {
     from: number[]
     to: number[]
-    /** 長さ（dm）。元データは 0.1m 単位なので整数で正確に持てる */
+    /** 長さ（dm）。元データは 0.1m 単位なので整数で正確に持てる。エレベーターは乗り場の間の数十 cm だけ */
     length: number[]
     struct: number[]
     kind: number[]
     width: number[]
     slope: number[]
     step: number[]
+    /** 方向性（Direction）。不明（99）は両方向として扱う */
+    dir: number[]
   }
 }

@@ -3,7 +3,7 @@
 // コストの単位は「何 m 歩くのと同じくらい避けたいか」。
 // 坂や狭い道は長いほどつらいので長さに掛ける倍率、階段や段差は 1 か所ごとの上乗せ（m）で表す。
 // 倍率と上乗せの値は仮置きで、当事者の声や指針で裏付けたものではない（README に明記する）。
-import { Kind, Slope, Step, UNKNOWN, Width, type Network } from './data/types.ts'
+import { Direction, Kind, Slope, Step, UNKNOWN, Width, type Network } from './data/types.ts'
 
 export type Profile = 'shortest' | 'stroller' | 'wheelchair' | 'suitcase'
 
@@ -12,8 +12,10 @@ export const BLOCK = 'block'
 type Rule = typeof BLOCK | number
 
 interface CostTable {
-  /** 階段・エスカレーター 1 か所の上乗せ（m） */
+  /** 階段 1 か所の上乗せ（m） */
   stairs: Rule
+  /** エスカレーター 1 か所の上乗せ（m）。ベビーカーと車椅子は乗れないが、スーツケースは階段と違って苦にならない */
+  escalator: Rule
   /** 2cm を超える段差 1 か所の上乗せ（m） */
   step: Rule
   /** 5% を超える上り坂の倍率（長さに掛ける） */
@@ -27,14 +29,14 @@ interface CostTable {
 }
 
 export const COSTS: Record<Profile, CostTable> = {
-  shortest: { stairs: 0, step: 0, steepUp: 1, steepDown: 1, narrow: 1, unknown: 0 },
-  stroller: { stairs: BLOCK, step: 60, steepUp: 2, steepDown: 1.5, narrow: 1.5, unknown: 50 },
-  wheelchair: { stairs: BLOCK, step: BLOCK, steepUp: BLOCK, steepDown: 2, narrow: BLOCK, unknown: 50 },
-  suitcase: { stairs: 150, step: 20, steepUp: 1.3, steepDown: 1.1, narrow: 1.2, unknown: 50 },
+  shortest: { stairs: 0, escalator: 0, step: 0, steepUp: 1, steepDown: 1, narrow: 1, unknown: 0 },
+  stroller: { stairs: BLOCK, escalator: BLOCK, step: 60, steepUp: 2, steepDown: 1.5, narrow: 1.5, unknown: 50 },
+  wheelchair: { stairs: BLOCK, escalator: BLOCK, step: BLOCK, steepUp: BLOCK, steepDown: 2, narrow: BLOCK, unknown: 50 },
+  suitcase: { stairs: 150, escalator: 0, step: 20, steepUp: 1.3, steepDown: 1.1, narrow: 1.2, unknown: 50 },
 }
 
 /** 経路を 1 方向に通るときに引っかかるもの */
-export type Obstacle = 'stairs' | 'step' | 'steepUp' | 'steepDown' | 'narrow' | 'unknown'
+export type Obstacle = 'stairs' | 'escalator' | 'step' | 'steepUp' | 'steepDown' | 'narrow' | 'unknown'
 
 export interface Graph {
   net: Network
@@ -48,29 +50,39 @@ export interface Graph {
   forward: Uint8Array
 }
 
+/** 経路 i を起点 → 終点の向き（forward）、またはその逆に通れるか。一方通行はおもにエスカレーター */
+export function canPass(net: Network, i: number, forward: boolean): boolean {
+  const d = net.links.dir[i]
+  return forward ? d !== Direction.Backward : d !== Direction.Forward
+}
+
 export function buildGraph(net: Network): Graph {
   const n = net.floors.length
   const { from, to } = net.links
   const degree = new Int32Array(n + 1)
   for (let i = 0; i < from.length; i++) {
-    degree[from[i] + 1]++
-    degree[to[i] + 1]++
+    if (canPass(net, i, true)) degree[from[i] + 1]++
+    if (canPass(net, i, false)) degree[to[i] + 1]++
   }
   for (let i = 0; i < n; i++) degree[i + 1] += degree[i]
   const start = degree.slice()
   const fill = degree.slice(0, n)
-  const m = from.length * 2
+  const m = start[n]
   const head = new Int32Array(m)
   const link = new Int32Array(m)
   const forward = new Uint8Array(m)
   for (let i = 0; i < from.length; i++) {
-    let e = fill[from[i]]++
-    head[e] = to[i]
-    link[e] = i
-    forward[e] = 1
-    e = fill[to[i]]++
-    head[e] = from[i]
-    link[e] = i
+    if (canPass(net, i, true)) {
+      const e = fill[from[i]]++
+      head[e] = to[i]
+      link[e] = i
+      forward[e] = 1
+    }
+    if (canPass(net, i, false)) {
+      const e = fill[to[i]]++
+      head[e] = from[i]
+      link[e] = i
+    }
   }
   return { net, start, head, link, forward }
 }
@@ -79,7 +91,8 @@ export function buildGraph(net: Network): Graph {
 export function obstaclesOf(net: Network, i: number, forward: boolean): Obstacle[] {
   const { kind, step, slope, width } = net.links
   const out: Obstacle[] = []
-  if (kind[i] === Kind.Stairs || kind[i] === Kind.Escalator) out.push('stairs')
+  if (kind[i] === Kind.Stairs) out.push('stairs')
+  if (kind[i] === Kind.Escalator) out.push('escalator')
   if (step[i] === Step.High) out.push('step')
   if (slope[i] === Slope.SteepUp || slope[i] === Slope.SteepDown) {
     // コードは起点 → 終点で見た上り下りなので、逆向きに通るときは入れ替わる
@@ -105,7 +118,7 @@ export function edgeCost(net: Network, profile: Profile, i: number, forward: boo
     if (r === BLOCK) {
       if (blockedAs === undefined) return Infinity
       add += blockedAs
-    } else if (o === 'stairs' || o === 'step' || o === 'unknown') add += r
+    } else if (o === 'stairs' || o === 'escalator' || o === 'step' || o === 'unknown') add += r
     else factor = Math.max(factor, r)
   }
   return len * factor + add

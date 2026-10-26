@@ -1,14 +1,12 @@
-// raw/ の CSV を、画面に同梱する src/data/network.json へ変換する。
-// 経路の形状は両端を結ぶ直線とみなす（元データの長さと両端の直線距離の比はすべて 0.9 以上。2026-10-21 確認）。
+// raw/<地域>/ の CSV を、画面が読む src/data/<地域>.json へ変換する。
+// 経路の形状は両端を結ぶ直線とみなす（元データの長さと両端の直線距離の差はどの地域も1割以内。check:data で確かめる）。
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Network } from '../src/data/types.ts'
 import { projector } from '../src/geo.ts'
-import { ATTRIBUTION, DATASET_PAGE, FETCHED_AT_PATH, FILES, SPEC } from './source.ts'
-
-const ORIGIN = { lat: 35.68124, lon: 139.76712 }
+import { SOURCES, SPEC, attribution, rawPath, type Source } from './source.ts'
 
 function readCsv(path: string): Record<string, string>[] {
-  const [head, ...rows] = readFileSync(path, 'utf8').trim().split(/\r?\n/)
+  const [head, ...rows] = readFileSync(path, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/)
   const cols = head.split(',')
   // 元データの値にカンマや引用符は含まれない
   return rows.map((r) => {
@@ -24,40 +22,45 @@ function code(s: string, name: string): number {
   return n
 }
 
-function convert(linkRows: Record<string, string>[], nodeRows: Record<string, string>[], fetchedAt: string): Network {
-  const project = projector(ORIGIN)
+function convert(s: Source): Network {
+  const project = projector(s.origin)
   const index = new Map<string, number>()
   const nodes: number[] = []
   const floors: number[] = []
-  for (const r of nodeRows) {
-    if (index.has(r.node_id)) throw new Error(`点の ID の重複: ${r.node_id}`)
+  for (const r of readCsv(rawPath(s.id, 'node.csv'))) {
+    if (index.has(r.node_id)) throw new Error(`${s.id}: 点の ID の重複: ${r.node_id}`)
     index.set(r.node_id, floors.length)
     const [x, y] = project(Number(r.lat), Number(r.lon))
     nodes.push(Math.round(x * 100), Math.round(y * 100))
     floors.push(Number(r.floor))
   }
 
-  const links: Network['links'] = { from: [], to: [], length: [], struct: [], kind: [], width: [], slope: [], step: [] }
-  for (const r of linkRows) {
+  const links: Network['links'] = { from: [], to: [], length: [], struct: [], kind: [], width: [], slope: [], step: [], dir: [] }
+  for (const r of readCsv(rawPath(s.id, 'link.csv'))) {
     const a = index.get(r.start_id)
     const b = index.get(r.end_id)
-    if (a === undefined || b === undefined) throw new Error(`経路 ${r.link_id} の端点が点の一覧にない`)
-    // 一方通行の経路はない（2026-10-21 確認）。現れたら探索の作りを見直す必要があるので止める
-    if (r.direction !== '1' && r.direction !== '99') throw new Error(`経路 ${r.link_id} が一方通行`)
+    if (a === undefined || b === undefined) throw new Error(`${s.id}: 経路 ${r.link_id} の端点が点の一覧にない`)
+    const length = Number(r.distance)
+    // 仕様ではエレベーターの長さは書かなくてよいが、どの地域にも数十 cm の値が入っている。空なら 0 とする
+    if (!(length >= 0)) throw new Error(`${s.id}: 経路 ${r.link_id} の長さ ${r.distance}`)
     links.from.push(a)
     links.to.push(b)
-    links.length.push(Math.round(Number(r.distance) * 10))
+    links.length.push(Math.round(length * 10))
     links.struct.push(code(r.rt_struct, 'rt_struct'))
     links.kind.push(code(r.route_type, 'route_type'))
     links.width.push(code(r.width, 'width'))
     links.slope.push(code(r.vtcl_slope, 'vtcl_slope'))
     links.step.push(code(r.lev_diff, 'lev_diff'))
+    links.dir.push(code(r.direction, 'direction'))
   }
 
-  return { attribution: ATTRIBUTION, source: { page: DATASET_PAGE, spec: SPEC, fetchedAt }, origin: ORIGIN, nodes, floors, links }
+  const fetchedAt = readFileSync(rawPath(s.id, 'fetched-at.txt'), 'utf8').trim()
+  return { attribution: attribution(s), source: { page: s.page, spec: SPEC, fetchedAt }, origin: s.origin, nodes, floors, links }
 }
 
-const net = convert(readCsv(FILES.link.path), readCsv(FILES.node.path), readFileSync(FETCHED_AT_PATH, 'utf8').trim())
-const json = JSON.stringify(net)
-writeFileSync('src/data/network.json', json)
-console.log(`点 ${net.floors.length}・経路 ${net.links.from.length}・${(json.length / 1024).toFixed(0)}KB`)
+for (const s of SOURCES) {
+  const net = convert(s)
+  const json = JSON.stringify(net)
+  writeFileSync(`src/data/${s.id}.json`, json)
+  console.log(`${s.id}: 点 ${net.floors.length}・経路 ${net.links.from.length}・${(json.length / 1024).toFixed(0)}KB`)
+}

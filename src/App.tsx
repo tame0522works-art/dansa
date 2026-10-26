@@ -1,17 +1,14 @@
-import { useMemo, useState } from 'react'
-import data from './data/network.json'
-import type { Network } from './data/types.ts'
+import { useEffect, useMemo, useState } from 'react'
+import { AREAS, coverageNote, type Area } from './areas.ts'
+import { linksToPath, loadArea, type AreaData } from './areaData.ts'
 import MapView, { type Badge, type Overlay } from './map/MapView.tsx'
 import { TILE_ORIGIN } from './map/tiles.ts'
-import type { Limits, View } from './map/view.ts'
-import { mainComponent, nearestNode, plan, type Mark } from './plan.ts'
-import { buildGraph, type Obstacle, type Profile } from './route.ts'
+import { nearestNode, plan, type Mark } from './plan.ts'
+import type { Obstacle, Profile } from './route.ts'
 
-const net = data as Network
-const graph = buildGraph(net)
-const inMain = mainComponent(graph)
+type Who = Exclude<Profile, 'shortest'>
 
-const PROFILES: { id: Exclude<Profile, 'shortest'>; label: string }[] = [
+const PROFILES: { id: Who; label: string }[] = [
   { id: 'stroller', label: 'ベビーカー' },
   { id: 'wheelchair', label: '車椅子' },
   { id: 'suitcase', label: 'スーツケース' },
@@ -19,44 +16,11 @@ const PROFILES: { id: Exclude<Profile, 'shortest'>; label: string }[] = [
 
 const OBSTACLE: Record<Exclude<Obstacle, 'unknown'>, { badge: string; name: string }> = {
   stairs: { badge: '階', name: '階段' },
+  escalator: { badge: 'エ', name: 'エスカレーター' },
   step: { badge: '段', name: '段差' },
   steepUp: { badge: '坂', name: '急な上り坂' },
   steepDown: { badge: '坂', name: '急な下り坂' },
   narrow: { badge: '狭', name: '幅1m未満' },
-}
-
-/** 経路の番号の並びを、平面座標（cm）の線分の Path2D にする（SVG の文字列にまとめると速い） */
-function linksToPath(links: Iterable<number>): Path2D {
-  const { from, to } = net.links
-  const p = net.nodes
-  let s = ''
-  for (const i of links) s += `M${p[2 * from[i]]} ${p[2 * from[i] + 1]}L${p[2 * to[i]]} ${p[2 * to[i] + 1]}`
-  return new Path2D(s)
-}
-
-const networkPath = linksToPath(net.links.from.keys())
-
-/** 点のある範囲（m）。地図の中心はここから外へ出さない */
-const LIMITS: Limits = (() => {
-  const xs = net.nodes.filter((_, i) => i % 2 === 0)
-  const ys = net.nodes.filter((_, i) => i % 2 === 1)
-  return { area: [Math.min(...xs) / 100, Math.min(...ys) / 100, Math.max(...xs) / 100, Math.max(...ys) / 100], minMpp: 0.15, maxMpp: 5 }
-})()
-
-/** 最初は原点（東京駅の代表点）の 300m 西、丸の内側を 1px 1.2m で見せる */
-const INITIAL: View = { cx: -300, cy: 0, mpp: 1.2 }
-
-const nodeXY = (i: number): [number, number] => [net.nodes[2 * i] / 100, net.nodes[2 * i + 1] / 100]
-
-/** 経路の中ほどに置く印 */
-function badgeAt(link: number, label: string): Badge {
-  const [ax, ay] = nodeXY(net.links.from[link])
-  const [bx, by] = nodeXY(net.links.to[link])
-  return { x: (ax + bx) / 2, y: (ay + by) / 2, label }
-}
-
-function badges(marks: Mark[]): Badge[] {
-  return marks.map(({ link, obstacles }) => badgeAt(link, OBSTACLE[obstacles[0] as Exclude<Obstacle, 'unknown'>].badge))
 }
 
 /** 「階段2・段差1」のように数える。1つの経路に段差と坂が両方あれば、両方に数える */
@@ -69,27 +33,92 @@ function tally(marks: Mark[]): string {
 const meters = (m: number) => `${Math.round(m).toLocaleString('ja-JP')}m`
 
 export default function App() {
-  const [profile, setProfile] = useState<Exclude<Profile, 'shortest'>>('wheelchair')
+  const [area, setArea] = useState<Area>(AREAS[0])
+  const [data, setData] = useState<{ id: string; data: AreaData } | null>(null)
+  const [profile, setProfile] = useState<Who>('wheelchair')
+
+  useEffect(() => {
+    let alive = true
+    loadArea(area).then((d) => alive && setData({ id: area.id, data: d }))
+    return () => {
+      alive = false
+    }
+  }, [area])
+
+  // 地域を切り替えた直後は、前の地域のデータを出さない
+  const current = data?.id === area.id ? data.data : null
+
+  return (
+    <div className="app">
+      <header className="bar">
+        <h1>dansa</h1>
+        <p className="lead">駅のまわりで、階段や段差を避けて歩く道</p>
+        <label className="area">
+          <span>地域</span>
+          <select value={area.id} onChange={(e) => setArea(AREAS.find((a) => a.id === e.target.value)!)}>
+            {AREAS.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
+      {current ? (
+        // 地域を変えたら、地図の位置と出発地・目的地を最初からにする
+        <Planner key={area.id} area={area} data={current} profile={profile} onProfile={setProfile} />
+      ) : (
+        <>
+          <main className="stage">
+            <p className="loading">{area.label}のデータを読み込んでいます…</p>
+          </main>
+          <section className="controls" aria-label="経路" />
+          <footer className="credit" />
+        </>
+      )}
+      <link rel="preconnect" href={TILE_ORIGIN} />
+    </div>
+  )
+}
+
+interface PlannerProps {
+  area: Area
+  data: AreaData
+  profile: Who
+  onProfile: (p: Who) => void
+}
+
+function Planner({ area, data, profile, onProfile }: PlannerProps) {
+  const { net, graph, inMain } = data
   const [start, setStart] = useState<number | null>(null)
   const [goal, setGoal] = useState<number | null>(null)
   const [missed, setMissed] = useState(false)
 
-  const result = useMemo(() => (start !== null && goal !== null ? plan(graph, profile, start, goal) : null), [profile, start, goal])
+  const nodeXY = (i: number): [number, number] => [net.nodes[2 * i] / 100, net.nodes[2 * i + 1] / 100]
+  /** 経路の中ほどに置く印 */
+  const badgeAt = (link: number, label: string): Badge => {
+    const [ax, ay] = nodeXY(net.links.from[link])
+    const [bx, by] = nodeXY(net.links.to[link])
+    return { x: (ax + bx) / 2, y: (ay + by) / 2, label }
+  }
+  const badges = (marks: Mark[]) => marks.map(({ link, obstacles }) => badgeAt(link, OBSTACLE[obstacles[0] as Exclude<Obstacle, 'unknown'>].badge))
+
+  const result = useMemo(() => (start !== null && goal !== null ? plan(graph, profile, start, goal) : null), [graph, profile, start, goal])
   const overlay = useMemo<Overlay | null>(() => {
     if (!result) return null
     const unknown = new Set(result.unknown)
     const links = result.route?.links.map((l) => l.link) ?? []
     return {
-      shortest: linksToPath(result.shortest.links.map((l) => l.link)),
-      route: result.route ? linksToPath(links.filter((l) => !unknown.has(l))) : null,
-      routeUnknown: unknown.size ? linksToPath(unknown) : null,
+      shortest: linksToPath(net, result.shortest.links.map((l) => l.link)),
+      route: result.route ? linksToPath(net, links.filter((l) => !unknown.has(l))) : null,
+      routeUnknown: unknown.size ? linksToPath(net, unknown) : null,
       avoided: badges(result.avoided),
       passed: badges(result.passed),
       unknown: result.unknown.map((l) => badgeAt(l, '?')),
-      bypass: result.blocked ? linksToPath(result.blocked.route.links.map((l) => l.link)) : null,
+      bypass: result.blocked ? linksToPath(net, result.blocked.route.links.map((l) => l.link)) : null,
       blocked: badges(result.blocked?.blockers ?? []),
     }
-  }, [result])
+  }, [result, net])
 
   /** 最短の道と利用者向けの道がどちらも入る範囲（m） */
   const focus = useMemo<[number, number, number, number] | null>(() => {
@@ -98,7 +127,7 @@ export default function App() {
     const xs = nodes.map((i) => net.nodes[2 * i] / 100)
     const ys = nodes.map((i) => net.nodes[2 * i + 1] / 100)
     return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
-  }, [result])
+  }, [result, net])
 
   function pick(x: number, y: number) {
     const node = nearestNode(graph, inMain, x, y)
@@ -113,17 +142,14 @@ export default function App() {
   const label = PROFILES.find((p) => p.id === profile)!.label
 
   return (
-    <div className="app">
-      <header className="bar">
-        <h1>dansa</h1>
-        <p className="lead">東京駅・丸の内で、階段や段差を避けて歩く道</p>
-      </header>
+    <>
       <main className="stage">
         <MapView
           origin={net.origin}
-          limits={LIMITS}
-          initial={INITIAL}
-          network={networkPath}
+          limits={data.limits}
+          initial={data.initial}
+          label={`${area.label}の歩行経路の地図`}
+          network={data.network}
           overlay={overlay}
           start={start === null ? null : nodeXY(start)}
           goal={goal === null ? null : nodeXY(goal)}
@@ -136,14 +162,14 @@ export default function App() {
           <legend>だれの道を探すか</legend>
           {PROFILES.map((p) => (
             <label key={p.id}>
-              <input type="radio" name="profile" value={p.id} checked={profile === p.id} onChange={() => setProfile(p.id)} />
+              <input type="radio" name="profile" value={p.id} checked={profile === p.id} onChange={() => onProfile(p.id)} />
               {p.label}
             </label>
           ))}
         </fieldset>
         <div className="result" aria-live="polite">
           {missed ? (
-            <p className="hint">そこには歩行経路のデータがありません。道の上を押してください（地下・建物の中・皇居の中は対象外です）。</p>
+            <p className="hint">そこには歩行経路のデータがありません。道の上を押してください（建物や公園の中、範囲の外は対象外です）。</p>
           ) : start === null ? (
             <p className="hint">地図を押して出発地を選んでください。</p>
           ) : goal === null ? (
@@ -209,7 +235,10 @@ export default function App() {
         </div>
       </section>
       <footer className="credit">
-        <p>地上の歩道だけを扱います。地下通路・エレベーターは含みません。調査は2017〜2018年度のもので、いまの様子と違う所があります。</p>
+        <p>
+          {area.note && `${area.note}`}
+          {coverageNote(area)}
+        </p>
         <p>
           出典:{' '}
           <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">
@@ -221,7 +250,6 @@ export default function App() {
           </a>
         </p>
       </footer>
-      <link rel="preconnect" href={TILE_ORIGIN} />
-    </div>
+    </>
   )
 }
