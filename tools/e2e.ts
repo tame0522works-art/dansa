@@ -177,6 +177,9 @@ const scenarios: Scenario[] = [
       assert.equal(await ui.page.run(`return document.title`), 'dansa')
       await ui.page.waitFor(`performance.getEntriesByType('resource').some(e => e.name.startsWith('https://cyberjapandata.gsi.go.jp/xyz/pale/'))`, '地理院タイルの読み込み')
       assert.match(await ui.text('.result'), /出発地を選んで/)
+      // 地図を広く残すため、注記は閉じておき、出典の要点だけを見せる
+      assert.equal(await ui.page.run(`return document.querySelector('.credit details').open`), false)
+      assert.match(await ui.page.run<string>(`return document.querySelector('.credit summary').innerText`), /地理院タイル.*国土交通省「歩行空間ネットワークデータ」を加工/)
       const credit = await ui.text('.credit')
       assert.match(credit, /地下通路・エレベーターは含みません/)
       assert.match(credit, /2017〜2018年度/)

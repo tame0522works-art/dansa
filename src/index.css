@@ -269,14 +269,35 @@ body {
 }
 
 .credit {
-  padding: 6px 16px 10px;
+  padding: 4px 16px 6px;
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.5;
 }
 
 .credit p {
-  margin: 0;
+  margin: 4px 0 0;
+}
+
+.credit summary {
+  cursor: pointer;
+}
+
+.credit summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 狭い画面で折り返すときは「／」の後で切る */
+.credit .nobr {
+  white-space: nowrap;
+}
+
+/* 開けることが分かるよう、要点の前に下線つきで置く */
+.credit .more {
+  margin-right: 8px;
+  color: var(--fg);
+  text-decoration: underline;
 }
 
 .credit a {

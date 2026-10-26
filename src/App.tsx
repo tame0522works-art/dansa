@@ -240,21 +240,29 @@ function Planner({ area, data, profile, onProfile }: PlannerProps) {
           </button>
         </div>
       </section>
+      {/* 地図を広く残すため、ふだんは出典の要点だけを1行で出し、範囲の注意と出典の全文は開いたときに出す */}
       <footer className="credit">
-        <p>
-          {area.note && `${area.note}`}
-          {coverageNote(area)}
-        </p>
-        <p>
-          出典:{' '}
-          <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">
-            地理院タイル（淡色地図）
-          </a>
-          ／
-          <a href={net.source.page} target="_blank" rel="noreferrer">
-            {net.attribution}
-          </a>
-        </p>
+        <details>
+          <summary>
+            <span className="more">範囲と出典</span>
+            <span className="nobr">地理院タイル／</span>
+            <span className="nobr">国土交通省「歩行空間ネットワークデータ」を加工</span>
+          </summary>
+          <p>
+            {area.note && `${area.note}`}
+            {coverageNote(area)}
+          </p>
+          <p>
+            出典:{' '}
+            <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">
+              地理院タイル（淡色地図）
+            </a>
+            ／
+            <a href={net.source.page} target="_blank" rel="noreferrer">
+              {net.attribution}
+            </a>
+          </p>
+        </details>
       </footer>
     </>
   )
