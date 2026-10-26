@@ -31,7 +31,7 @@ interface CostTable {
 export const COSTS: Record<Profile, CostTable> = {
   shortest: { stairs: 0, escalator: 0, step: 0, steepUp: 1, steepDown: 1, narrow: 1, unknown: 0 },
   stroller: { stairs: BLOCK, escalator: BLOCK, step: 60, steepUp: 2, steepDown: 1.5, narrow: 1.5, unknown: 50 },
-  wheelchair: { stairs: BLOCK, escalator: BLOCK, step: BLOCK, steepUp: BLOCK, steepDown: 2, narrow: BLOCK, unknown: 50 },
+  wheelchair: { stairs: BLOCK, escalator: BLOCK, step: BLOCK, steepUp: 4, steepDown: 2, narrow: BLOCK, unknown: 50 },
   suitcase: { stairs: 150, escalator: 0, step: 20, steepUp: 1.3, steepDown: 1.1, narrow: 1.2, unknown: 50 },
 }
 

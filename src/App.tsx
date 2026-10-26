@@ -187,8 +187,14 @@ function Planner({ area, data, profile, onProfile }: PlannerProps) {
                 </span>
               </p>
               <ul className="notes">
-                {result.avoided.length > 0 ? <li>最短の道にある {tally(result.avoided)} を避けました。</li> : <li>最短の道に、{label}で避けたい箇所はありません。</li>}
-                {result.passed.length > 0 && <li>それでも {tally(result.passed)} を通ります（遠回りするより短いと判断しました）。</li>}
+                {result.avoided.length > 0 && <li>最短の道にある {tally(result.avoided)} を避けました。</li>}
+                {result.passed.length > 0 && (
+                  <li>
+                    {result.avoided.length > 0 ? 'それでも ' : ''}
+                    {tally(result.passed)} を通ります（遠回りするより短いと判断しました）。
+                  </li>
+                )}
+                {result.avoided.length === 0 && result.passed.length === 0 && <li>最短の道に、{label}で避けたい箇所はありません。</li>}
                 {result.unknown.length > 0 && <li>「?」の {result.unknown.length} 区間（点線）は、段差・勾配・幅のどれかが調べられていません。</li>}
               </ul>
             </>

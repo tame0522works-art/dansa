@@ -6,7 +6,10 @@ import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { AREAS } from '../src/areas.ts'
+import { projector } from '../src/geo.ts'
 import { Browser, sleep, type Page, type Viewport } from './cdp.ts'
+import { SOURCES } from './source.ts'
 
 const PORT = 4203
 const BASE = `http://127.0.0.1:${PORT}/`
@@ -14,10 +17,15 @@ const DESKTOP: Viewport = { width: 1280, height: 860 }
 const PHONE: Viewport = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true, touch: true }
 const FAILURES = 'e2e-failures'
 
-/** アプリの最初の表示（src/App.tsx の INITIAL）: 画面中央が平面座標 (-300, 0) m、1px 1.2m */
-const INITIAL = { cx: -300, cy: 0, mpp: 1.2 }
-// 押す地点は経路の点そのもの（src/data/network.json の点の番号を添える）
-/** 大手町（点 1717）。東京駅の南側（点 2470）まで、最短 836m・車椅子向け 1,250m */
+/** 地域の最初の表示（src/areaData.ts と同じ）: 画面中央が src/areas.ts の center、1px 1.2m */
+function initialView(id: string) {
+  const area = AREAS.find((a) => a.id === id)!
+  const origin = SOURCES.find((s) => s.id === id)!.origin
+  const [cx, cy] = projector(origin)(area.center.lat, area.center.lon)
+  return { cx, cy, mpp: 1.2 }
+}
+// 押す地点は経路の点そのもの（src/data/<地域>.json の点の番号を添える）
+/** 東京駅: 大手町（点 1717）。東京駅の南側（点 2470）まで、最短 836m・車椅子向け 857m */
 const OTEMACHI: [number, number] = [-595.15, 252.63]
 const SOUTH: [number, number] = [-139.99, -195.57]
 /** 丸の内の歩道（点 1881）。目的地（点 3535）の直前に 2cm を超える段差があり、車椅子では行けない */
@@ -25,11 +33,32 @@ const MARUNOUCHI: [number, number] = [-379.91, -74.06]
 const STEP_GOAL: [number, number] = [-471.66, 146.98]
 /** 皇居の中。いちばん近い経路の点まで 78m あり、寄せる上限（60m）を超える */
 const PALACE: [number, number] = [-1000, 0]
+/** 渋谷〜新宿: 西新宿（点 5606）から新宿駅の東（点 6222）まで。最短 879m、車椅子向けは急な坂を避けて 1,239m */
+const NISHI_SHINJUKU: [number, number] = [-1050.59, 1602.66]
+const SHINJUKU_EAST: [number, number] = [-437.25, 1490.4]
+/** 池袋: 西口側（点 396）から東口側（点 1130）まで。最短 937m。ベビーカーは階段 3 か所を越えないと行けない */
+const IKEBUKURO_WEST: [number, number] = [-328.66, 19.96]
+const IKEBUKURO_EAST: [number, number] = [277.07, -196.78]
 
 class Ui {
   readonly page: Page
+  /** いま見ている地域の最初の表示。押す位置はここから求める */
+  view = initialView('tokyo')
   constructor(page: Page) {
     this.page = page
+  }
+
+  /** ヘッダーの「地域」を切り替えて、その地域の地図が出るまで待つ */
+  async selectArea(id: string) {
+    await this.page.run(`
+      const s = document.querySelector('.area select');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(id)});
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    `)
+    const name = `${AREAS.find((a) => a.id === id)!.label}の歩行経路の地図`
+    await this.page.waitFor(`document.querySelector('canvas.map')?.getAttribute('aria-label') === ${JSON.stringify(name)} && document.querySelector('canvas.map').width > 0`, name)
+    this.view = initialView(id)
+    await sleep(300)
   }
 
   async open() {
@@ -49,7 +78,8 @@ class Ui {
       const r = document.querySelector('canvas.map').getBoundingClientRect();
       return { left: r.left, top: r.top, width: r.width, height: r.height };
     `)
-    return { x: r.left + r.width / 2 + (x - INITIAL.cx) / INITIAL.mpp, y: r.top + r.height / 2 - (y - INITIAL.cy) / INITIAL.mpp }
+    const v = this.view
+    return { x: r.left + r.width / 2 + (x - v.cx) / v.mpp, y: r.top + r.height / 2 - (y - v.cy) / v.mpp }
   }
 
   async click(x: number, y: number) {
@@ -160,13 +190,13 @@ const scenarios: Scenario[] = [
     },
   },
   {
-    name: '2点を押すと最短と車椅子向けの道が出て、利用者を切り替えると引き直す',
+    name: '東京駅: 2点を押すと最短と車椅子向けの道が出て、利用者を切り替えると引き直す',
     async run(ui) {
       await ui.open()
       await ui.route(OTEMACHI, SOUTH)
       // check:route と同じ探索なので、長さも同じになる
       const summary = await ui.text('.summary')
-      assert.match(summary, /車椅子向け 1,250m（最短より \+415m）/)
+      assert.match(summary, /車椅子向け 857m（最短より \+22m）/)
       assert.match(summary, /最短 836m/)
       assert.match(await ui.text('.notes'), /を避けました/)
       assert.ok((await ui.countColor(ROUTE_RGB, 6)) > 500, '利用者向けの道が描かれていない')
@@ -228,9 +258,12 @@ const scenarios: Scenario[] = [
     },
   },
   {
-    name: 'キーボード: Tab で地図を選び、Enter で中央の地点を出発地にできる',
+    name: 'キーボード: Tab で地域の選択、地図の順に移り、Enter で中央の地点を出発地にできる',
     async run(ui) {
       await ui.open()
+      // 先頭はヘッダーの地域の選択。もう一度 Tab で地図
+      await ui.press('Tab', 'Tab', 9)
+      assert.ok(await ui.page.run<boolean>(`return document.activeElement === document.querySelector('.area select')`), 'Tab で地域の選択に移らない')
       await ui.press('Tab', 'Tab', 9)
       const focus = await ui.page.run<{ map: boolean; help: string }>(`
         const m = document.querySelector('canvas.map');
@@ -245,6 +278,54 @@ const scenarios: Scenario[] = [
       await ui.page.run(`document.querySelector('.profiles input:checked').focus()`)
       await ui.press('ArrowRight', 'ArrowRight', 39)
       assert.equal(await ui.page.run(`return document.querySelector('.profiles input:checked').value`), 'suitcase')
+    },
+  },
+  {
+    name: '地域を切り替えると、地図・注意・出典がその地域のものになり、出発地は選び直しになる',
+    async run(ui) {
+      await ui.open()
+      const p = await ui.screenOf(MARUNOUCHI)
+      await ui.click(p.x, p.y)
+      assert.match(await ui.text('.result'), /次に目的地を押して/)
+      await ui.chooseProfile('ベビーカー')
+      await ui.selectArea('ikebukuro')
+      assert.match(await ui.text('.result'), /出発地を選んで/)
+      const credit = await ui.text('.credit')
+      assert.match(credit, /駅の東側と西側は階段/)
+      assert.match(credit, /エレベーターは含みません。地下通路は一部だけです/)
+      assert.match(credit, /歩行空間ネットワークデータ（池袋駅周辺）.*加工して作成/)
+      const links = await ui.page.run<string[]>(`return [...document.querySelectorAll('.credit a')].map(a => a.href)`)
+      assert.ok(links.includes('https://www.hokoukukan.go.jp/metadata/detail/82'))
+      // 利用者の選択は地域をまたいで残る
+      assert.equal(await ui.page.run(`return document.querySelector('.profiles input:checked').value`), 'stroller')
+      await ui.selectArea('ueno')
+      assert.match(await ui.text('.credit'), /上野駅の東側（浅草口・入谷口の側）は範囲外/)
+    },
+  },
+  {
+    name: '渋谷〜新宿: 車椅子は急な坂を避けて遠回りし、避けきれない坂は通ると示す',
+    async run(ui) {
+      await ui.open()
+      await ui.selectArea('shibuya-shinjuku')
+      await ui.route(NISHI_SHINJUKU, SHINJUKU_EAST)
+      assert.match(await ui.text('.summary'), /車椅子向け 1,239m（最短より \+360m）最短 879m/)
+      assert.match(await ui.text('.notes'), /それでも .*急な上り坂\d+.* を通ります/)
+      await ui.chooseProfile('スーツケース')
+      assert.match(await ui.text('.summary'), /スーツケース向け 885m/)
+    },
+  },
+  {
+    name: '池袋: 東西をまたぐ道はベビーカーでは階段を越えないと行けず、スーツケースなら出る',
+    async run(ui) {
+      await ui.open()
+      await ui.chooseProfile('ベビーカー')
+      await ui.selectArea('ikebukuro')
+      await ui.route(IKEBUKURO_WEST, IKEBUKURO_EAST)
+      assert.match(await ui.text('.summary'), /ベビーカーで通れる道が見つかりません（最短は 937m）/)
+      assert.match(await ui.text('.notes'), /赤い印の 階段3 を越えられれば、破線の道（974m）で行けます/)
+      assert.ok((await ui.countColor(BLOCKED_RGB, 6)) > 100, '通れない箇所の印が見えない')
+      await ui.chooseProfile('スーツケース')
+      assert.match(await ui.text('.summary'), /スーツケース向け \d/)
     },
   },
   {

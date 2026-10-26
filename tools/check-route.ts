@@ -59,14 +59,20 @@ const path = (net: Network, p: Profile, a: number, b: number) => findRoute(build
 // 勾配の向き。経路 0 → 1 は「起点より終点が高い」急坂。逆向きに通ると下り坂になる
 {
   const up = tiny(2, [{ a: 0, b: 1, m: 40, slope: Slope.SteepUp }])
-  assert.equal(path(up, 'wheelchair', 0, 1), null, '車椅子は急な上り坂を通れない')
-  assert.deepEqual(path(up, 'wheelchair', 1, 0), [1, 0], '同じ坂を下る向きなら通れる')
   assert.equal(edgeCost(up, 'stroller', 0, true), 80)
   assert.equal(edgeCost(up, 'stroller', 0, false), 60)
+  // 車椅子は急な上り坂を「通れるが、とても避けたい」（長さの 4 倍）。坂の多い地域で、ほぼどこへも行けなくなったため（2026-10-26）
+  assert.equal(edgeCost(up, 'wheelchair', 0, true), 160)
+  assert.equal(edgeCost(up, 'wheelchair', 0, false), 80)
   // 終点のほうが低い坂は、起点から通ると下り
   const down = tiny(2, [{ a: 0, b: 1, m: 40, slope: Slope.SteepDown }])
-  assert.deepEqual(path(down, 'wheelchair', 0, 1), [0, 1])
-  assert.equal(path(down, 'wheelchair', 1, 0), null)
+  assert.equal(edgeCost(down, 'wheelchair', 0, true), 80)
+  assert.equal(edgeCost(down, 'wheelchair', 0, false), 160)
+  // 上り坂 40m（160m 相当）を避ける遠回りが 150m なら遠回りし、200m なら坂を上る
+  const near = tiny(3, [{ a: 0, b: 1, m: 40, slope: Slope.SteepUp }, { a: 0, b: 2, m: 75 }, { a: 2, b: 1, m: 75 }])
+  assert.deepEqual(path(near, 'wheelchair', 0, 1), [0, 2, 1])
+  const far = tiny(3, [{ a: 0, b: 1, m: 40, slope: Slope.SteepUp }, { a: 0, b: 2, m: 100 }, { a: 2, b: 1, m: 100 }])
+  assert.deepEqual(path(far, 'wheelchair', 0, 1), [0, 1])
 }
 
 // 段差・幅
